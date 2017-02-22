@@ -1,3 +1,6 @@
+# Don't need tester code
+tester_code.py
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
