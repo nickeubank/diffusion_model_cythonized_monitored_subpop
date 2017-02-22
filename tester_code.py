@@ -8,7 +8,10 @@ Created on Sun Jan  8 19:05:06 2017
 import pandas as pd
 import numpy as np
 import os
-os.chdir('/users/nick/dropbox/GAPP/02_Main Evaluation/Activities/18_voting_and_networks/2_code/diffusion_model')
+path = '/users/nick/dropbox/GAPP/02_Main Evaluation/Activities/'\
+       '18_voting_and_networks/2_code/diffusion_model_cythonized'
+os.chdir(path)
+
 import igraph as ig
 
 # Cython import
@@ -24,7 +27,7 @@ g.add_vertices(4)
 g.add_edges([(0,1), (1,2)])
 
 # Simple test:
-test = dm.diffusion_run(g, 0.1, number_of_runs=3, num_starting_infections=1)
+test = dm.diffusion_run(g, 1, number_of_runs=3, initially_infected_nodes={0})
 
 graph, p, number_of_runs, 
                   num_starting_infections=None,  

@@ -185,7 +185,7 @@ def diffusion_run(graph, p, number_of_runs,
 
         # Setup model.                   
         si_model = SIModel(graph=graph, p=p, num_starting_infections=num_starting_infections, 
-                           initial_infection=initially_infected_nodes, tests=tests)
+                           initially_infected_nodes=initially_infected_nodes, tests=tests)
     
     
 
