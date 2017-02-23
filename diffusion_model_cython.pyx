@@ -85,7 +85,7 @@ class SIModel(object):
         self.network_size = graph.vcount()
         self.p = p
         self.infected = set()
-        self.uninfected = set(range(graph.vcount()-1))
+        self.uninfected = set(range(graph.vcount()))
         self.tests = tests
 
         # Setup initial state
@@ -220,54 +220,21 @@ def test_suite():
     line.add_edges([(0,1)])    
     
     # Start with 1 of 2, should spread from half (starting seed) to full from 0 to 1. 
-    test_result = diffusion_run(graph=line, p=1)
-    assert_series_equal(test_result, pd.Series([0.0,0,0,1],index = [0.1, 0.25, 0.5, 0.75], name=0))
-
-    # If one watched and one seeded, should all trigger at 0.
-    test_result = diffusion_run(graph=line, nodes_to_watch=set(range(1)), p=1, tests=False,
-                      district=0)
-    assert_series_equal(test_result, pd.Series([0.0,0,0,0],index = [0.1, 0.25, 0.5, 0.75],name=0))                      
+    test_result = diffusion_run(graph=line, p=1, number_of_runs=2, num_starting_infections=1)
+    assert_series_equal(test_result, pd.Series([0.0,0,0,1],index = [0.1, 0.25, 0.5, 0.75]))
 
     # If watch 2 and start with 2, trigger right away
-    test_result = diffusion_run(graph=line, nodes_to_watch=set(range(2)), p=1, tests=False,
-                      district=0, starting_infections=2)
-    assert_series_equal(test_result , pd.Series([0.0,0,0,0],index = [0.1, 0.25, 0.5, 0.75],name=0))                    
+    test_result = diffusion_run(graph=line, p=1, number_of_runs=2, num_starting_infections=2)
+    assert_series_equal(test_result , pd.Series([0.0,0,0,0],index = [0.1, 0.25, 0.5, 0.75]))                    
 
-
-    # Immediate spread in full graph
-    full = ig.Graph.Full(10)
-    test_result = diffusion_run(graph=full, nodes_to_watch=set(range(10)), p=1, tests=False,
-                      district=0)
-    assert_series_equal(test_result , pd.Series([0.0,1,1,1],index = [0.1, 0.25, 0.5, 0.75],name=0))
 
     # No spread in disconnected
     sparse = ig.Graph()
     sparse.add_vertices(4)
     sparse.add_edges([(0,1), (2,3)])
-    test_result = diffusion_run(graph=sparse, nodes_to_watch=set(range(4)), p=1, tests=False,
-                      district=0)
-    assert_series_equal(test_result , pd.Series([0.0,0,1,np.nan],index = [0.1, 0.25, 0.5, 0.75],name=0))                      
+    test_result = diffusion_run(graph=sparse, number_of_runs=1, p=1, num_starting_infections=1)
+    assert_series_equal(test_result , pd.Series([0.0,0,1,np.nan],index = [0.1, 0.25, 0.5, 0.75]))                      
     
-    
-    # No spread if p=0
-    sparse = ig.Graph.Full(2)
-    test_result = diffusion_run(graph=sparse, nodes_to_watch=set(range(2)), p=0, tests=False,
-                      district=0)
-    assert_series_equal(test_result , pd.Series([0.0,0,0,np.nan],index = [0.1, 0.25, 0.5, 0.75],name=0))                      
-    
-    
-
-    # If make line and start at tail, should diffuse one per step
-    line = ig.Graph()
-    line.add_vertices(range(10))
-    line.add_edges([(0,1), (1,2), (2,3), (3,4), (4,5), (5,6), (6,7), (7,8), (8,9)])    
-    
-    test_result = diffusion_run(graph=line, nodes_to_watch=set(range(10)), p=1, initial_infection={0}, district=0)
-    assert_series_equal(test_result, pd.Series([0.0,2,4,7],index = [0.1, 0.25, 0.5, 0.75], name=0))
-
-    # Modify thresholds
-    test_result = diffusion_run(graph=line, nodes_to_watch=set(range(10)), p=1, initial_infection={0}, district=0, thresholds=[0,0.1,1])
-    assert_series_equal(test_result, pd.Series([0.0,0,9],index = [0,0.1,1], name=0))
 
     ######
     # Test probabilities
@@ -279,13 +246,11 @@ def test_suite():
     run = 1000
     output = pd.Series(np.nan*run)
     for i in range(run):
-        r = diffusion_run(graph=ig.Graph.Full(2), nodes_to_watch=set(range(2)), p=0.2, tests=False,
-                      district=0, thresholds=[1], initial_infection={0})
+        r = diffusion_run(graph=ig.Graph.Full(2), p=0.2, number_of_runs=1, thresholds=[1], initially_infected_nodes={0})
         output.loc[i] = r.loc[1]
 
-    output.mean()-1
     try:       
-        assert output.mean()-1 > 3.5 and output.mean()-1 <4.5
+        assert (output.mean() - 1) > 3.5 and (output.mean() - 1) < 4.5
     except:
         raise ValueError("Test on 1-link diffusion should have taken avg 5 steps (se 0.14), took {}".format(output.mean()))
 
@@ -299,15 +264,15 @@ def test_suite():
     run = 100
     output = pd.Series(np.nan*run)
     for i in range(run):
-        r = diffusion_run(graph=line, nodes_to_watch=set(range(10)), p=0.7, tests=False,
-                      district=0, thresholds=[1], initial_infection={0})
+        r = diffusion_run(graph=line, p=0.7, thresholds=[1], number_of_runs=1, initially_infected_nodes={0})
         output.loc[i] = r.loc[1]
 
     output.mean() - 9
     try:       
-        assert output.mean() - 9 < 4.5 and output.mean() - 9 > 3.1
+        assert (output.mean() - 9) < 4.5 and (output.mean() - 9) > 3.1
     except:
         raise ValueError("Test on 9-line diffusion should have taken avg 12.86 steps (se 0.22), took {}".format(output.mean()))
+
 
     print('test graphs ok')
 
