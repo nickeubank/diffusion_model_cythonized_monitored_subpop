@@ -29,9 +29,15 @@ cdef float randnum():
     return rand() / RAND_MAX
 
 
-cdef list sample_from_neighbors(list neighbors, float p):
+cdef list sample_from_neighbors(list neighbors, float p, int normalize_p):
     cdef list to_return
     cdef int i
+    cdef int length
+
+    if normalize_p == 1:
+        length = len(neighbors)
+        if length > 0:
+            p = p / length
 
     to_return = []    
     
@@ -42,7 +48,7 @@ cdef list sample_from_neighbors(list neighbors, float p):
     return to_return
 
 
-cdef set stand_alone_step(object graph, set infected, float p):
+cdef set stand_alone_step(object graph, set infected, float p, int normalize_p):
 
         # Infected vertices spread the infeciton
         cdef set newly_infected
@@ -52,7 +58,7 @@ cdef set stand_alone_step(object graph, set infected, float p):
                         
         for vertex in infected:
             neighbors = graph.neighbors(vertex)
-            choices = sample_from_neighbors(neighbors, p)
+            choices = sample_from_neighbors(neighbors, p, normalize_p)
             newly_infected.update(choices)
 
         return newly_infected
@@ -75,7 +81,8 @@ class SIModel(object):
     """
     
     def __init__(self, graph,  p=0.1, num_starting_infections=None,  
-                 tests=False, initially_infected_nodes=None):
+                 tests=False, initially_infected_nodes=None, 
+                 normalize_p=False):
         """
         Constructs an SI model on the given `graph` with
         infection rate `p`
@@ -87,6 +94,7 @@ class SIModel(object):
         self.infected = set()
         self.uninfected = set(range(graph.vcount()))
         self.tests = tests
+        self.normalize_p = int(normalize_p)
 
         # Setup initial state
 
@@ -115,7 +123,7 @@ class SIModel(object):
         (since it's slowest part)
 
         """
-        newly_infected = stand_alone_step(self.graph, self.infected, self.p)
+        newly_infected = stand_alone_step(self.graph, self.infected, self.p, self.normalize_p)
         self.move_to_infected(newly_infected)
 
     def move_to_infected(self, newly_infected):
@@ -140,6 +148,7 @@ def diffusion_run_threshold(graph, p, number_of_runs,
                   max_iter=1000,
                   thresholds=[0.1, 0.25, 0.5, 0.75],
                   agg_function=np.mean,
+                  normalize_p=False,
                   include_finish_counts=False,
                   tests=False):
 
@@ -170,6 +179,11 @@ def diffusion_run_threshold(graph, p, number_of_runs,
             Default [0.1, 0.25, 0.5, 0.75].
     agg_function: function used to aggregate all the runs. 
             Default is np.mean. 
+    normalize_p: Should p be normalized by degree of vertex. 
+            Default False. 
+            If False, each edge has iid probability p of spreading.
+            If True, each edge has iid probability of p / degree(v) 
+            of spreading from vertex v. 
     include_finish_counts: Return DataFrame with column of 
             successes at reaching threshold. Can only be combined with 
             thresholds.
@@ -199,7 +213,8 @@ def diffusion_run_threshold(graph, p, number_of_runs,
 
         # Setup model.                   
         si_model = SIModel(graph=graph, p=p, num_starting_infections=num_starting_infections, 
-                           initially_infected_nodes=initially_infected_nodes, tests=tests)
+                           initially_infected_nodes=initially_infected_nodes, tests=tests,
+                           normalize_p=normalize_p)
     
         for i in range(0, max_iter):
         
@@ -231,6 +246,7 @@ def diffusion_run_steps(graph, p, number_of_runs,
                   num_starting_infections=None,  
                   initially_infected_nodes=None,
                   agg_function=np.mean,
+                  normalize_p=False,
                   tests=False):
 
     """ 
@@ -251,6 +267,11 @@ def diffusion_run_steps(graph, p, number_of_runs,
             with num_starting_infections. 
     agg_function: function used to aggregate all the runs. 
             Default is np.mean. 
+    normalize_p: Should p be normalized by degree of vertex. 
+            Default False. 
+            If False, each edge has iid probability p of spreading.
+            If True, each edge has iid probability of p / degree(v) 
+            of spreading from vertex v. 
     tests: run internal integrity tests. Adds to running time, 
             mostly for internal purposes. 
     
@@ -276,9 +297,9 @@ def diffusion_run_steps(graph, p, number_of_runs,
 
         # Setup model.                   
         si_model = SIModel(graph=graph, p=p, num_starting_infections=num_starting_infections, 
-                           initially_infected_nodes=initially_infected_nodes, tests=tests)
+                           initially_infected_nodes=initially_infected_nodes, tests=tests,
+                           normalize_p=normalize_p)
             
-
         for i in range(0, max(steps_at_which_to_evaluate)+1):
         
             # Check coverage
@@ -377,6 +398,19 @@ def test_suite():
     except:
         raise ValueError("Test on 9-line diffusion should have taken avg 12.86 steps (se 0.22), took {}".format(output.mean()))
 
+    #####
+    # Check with normalization
+    # Little more complicated now, since first edge has double the probability of spreading of others. 
+    # Steps = 9 + [num failures]
+    # Steps = 9 + [14.85, sd 6.5] + [0.43, sd 0.78]
+    # ~ 24, sd ~ 7. SE = 0.22 at n = 1000
+    #####
+    r = diffusion_run_threshold(graph=line, p=0.7, thresholds=[1], number_of_runs=1000, initially_infected_nodes={0},
+        normalize_p=True)
+    try:       
+        assert (abs(r - 24) < 0.8).all()
+    except:
+        raise ValueError("Test on 9-line diffusion with normalized P should have taken avg 24 steps, took {}".format(r))
 
     print('test graphs ok')
 
