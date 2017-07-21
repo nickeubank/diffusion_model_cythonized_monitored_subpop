@@ -82,7 +82,7 @@ class SIModel(object):
     
     def __init__(self, graph,  p=0.1, num_starting_infections=None,  
                  tests=False, initially_infected_nodes=None, 
-                 normalize_p=False):
+                 normalize_p=False, watched=None):
         """
         Constructs an SI model on the given `graph` with
         infection rate `p`
@@ -95,6 +95,14 @@ class SIModel(object):
         self.uninfected = set(range(graph.vcount()))
         self.tests = tests
         self.normalize_p = int(normalize_p)
+
+        if watched is None:
+            self.watched = None
+            self.watched_size = self.network_size
+        else:
+            assert isinstance(watched, set)
+            self.watched = watched
+            self.watched_size = len(watched)
 
         # Setup initial state
 
@@ -131,13 +139,17 @@ class SIModel(object):
         self.infected.update(newly_infected)
         self.uninfected.difference_update(newly_infected)
         
-        # Embedded tests
+        # Embedded testsp
         if self.tests:
             assert len(self.infected.intersection(self.uninfected)) == 0        
 
     @property
     def share_infected(self):        
-        return len(self.infected) / self.network_size
+        if self.watched is not None:
+            watched_infected = self.infected.intersection(self.watched)
+            return len(watched_infected) / self.watched_size
+        else:
+            return len(self.infected) / self.network_size
 
 
 
@@ -150,6 +162,7 @@ def diffusion_run_threshold(graph, p, number_of_runs,
                   agg_function=np.mean,
                   normalize_p=False,
                   include_finish_counts=False,
+                  watched=None,
                   tests=False):
 
     """ 
@@ -188,6 +201,9 @@ def diffusion_run_threshold(graph, p, number_of_runs,
             successes at reaching threshold. Can only be combined with 
             thresholds.
             Default False. 
+    watched: set of vertices over which to measure infection rates. 
+            If none, calculates infection rate over full network. 
+            Default None. 
     tests: run internal integrity tests. Adds to running time, 
             mostly for internal purposes. 
     
@@ -214,7 +230,7 @@ def diffusion_run_threshold(graph, p, number_of_runs,
         # Setup model.                   
         si_model = SIModel(graph=graph, p=p, num_starting_infections=num_starting_infections, 
                            initially_infected_nodes=initially_infected_nodes, tests=tests,
-                           normalize_p=normalize_p)
+                           normalize_p=normalize_p, watched=watched)
     
         for i in range(0, max_iter):
         
@@ -247,6 +263,7 @@ def diffusion_run_steps(graph, p, number_of_runs,
                   initially_infected_nodes=None,
                   agg_function=np.mean,
                   normalize_p=False,
+                  watched=None,
                   tests=False):
 
     """ 
@@ -272,6 +289,9 @@ def diffusion_run_steps(graph, p, number_of_runs,
             If False, each edge has iid probability p of spreading.
             If True, each edge has iid probability of p / degree(v) 
             of spreading from vertex v. 
+    watched: set of vertices over which to measure infection rates. 
+            If none, calculates infection rate over full network. 
+            Default None. 
     tests: run internal integrity tests. Adds to running time, 
             mostly for internal purposes. 
     
@@ -298,7 +318,8 @@ def diffusion_run_steps(graph, p, number_of_runs,
         # Setup model.                   
         si_model = SIModel(graph=graph, p=p, num_starting_infections=num_starting_infections, 
                            initially_infected_nodes=initially_infected_nodes, tests=tests,
-                           normalize_p=normalize_p)
+                           normalize_p=normalize_p,
+                           watched=watched)
             
         for i in range(0, max(steps_at_which_to_evaluate)+1):
         
@@ -412,5 +433,39 @@ def test_suite():
     except:
         raise ValueError("Test on 9-line diffusion with normalized P should have taken avg 24 steps, took {}".format(r))
 
+
+    ####
+    # Test watched subset
+    ####
+    
+    g = ig.Graph.Full(5)
+    g.add_vertices(range(5,10))
+
+    test_result = diffusion_run_steps(graph=g, p=1, number_of_runs=10, initially_infected_nodes=[0],
+                                steps_at_which_to_evaluate=range(5))
+    assert_series_equal(test_result , pd.Series([0.1, 0.5, 0.5, 0.5, 0.5]))
+    
+    test_result = diffusion_run_steps(graph=g, p=1, number_of_runs=10, initially_infected_nodes=[0],
+                                steps_at_which_to_evaluate=range(5),
+                                watched=set(range(5)))
+    assert_series_equal(test_result , pd.Series([0.2, 1, 1, 1, 1]))
+    
+    test_result = diffusion_run_steps(graph=g, p=1, number_of_runs=10, initially_infected_nodes=[0],
+                                steps_at_which_to_evaluate=range(5),
+                                watched=set(range(6,10)))
+    assert_series_equal(test_result , pd.Series([0.0, 0, 0, 0, 0])) 
+
+    test_result = diffusion_run_steps(graph=g, p=1, number_of_runs=10, initially_infected_nodes=[0],
+                                steps_at_which_to_evaluate=range(5),
+                                watched=set(range(10)))
+    assert_series_equal(test_result , pd.Series([0.1, 0.5, 0.5, 0.5, 0.5]))
+    
+    test_result = diffusion_run_steps(graph=g, p=1, number_of_runs=10, initially_infected_nodes=[0],
+                                steps_at_which_to_evaluate=range(5),
+                                watched=set(range(6)))
+    assert_series_equal(test_result , pd.Series([1/6, 5/6, 5/6, 5/6, 5/6 ]))
+
+
     print('test graphs ok')
+
 
